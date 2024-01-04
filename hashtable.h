@@ -120,10 +120,26 @@ public:
 };
 
 template<typename TKey>
+class hashtable_fixkeysize {
+public:
+	static constexpr uint32_t fixkeysize(uint32_t size) {
+		return 0;
+	}
+};
+template<>
+class hashtable_fixkeysize<const char*> {
+public:
+	static constexpr uint32_t fixkeysize(uint32_t size) {
+		return size;
+	}
+};
+
+template<typename TKey>
 class hashtable_base_type :
 	public hashtable_hash_type<TKey>,
 	public hashtable_comp_type<TKey>,
-	public hashtable_typelength<TKey>
+	public hashtable_typelength<TKey>,
+	public hashtable_fixkeysize<TKey>
 {
 };
 
@@ -233,9 +249,6 @@ public:
 		_key(key),
 		_hash(hash)
 	{}
-	static constexpr uint32_t fixkeysize(uint32_t size) {
-		return 0;
-	}
 	template<typename TKey>
 	bool comp(const TKey& key, uint32_t count) {
 		return memcmp(&_key, &key, sizeof(TKey)) == 0;
@@ -254,9 +267,6 @@ public:
 		_key(key),
 		_hash(hash)
 	{}
-	static constexpr uint32_t fixkeysize(uint32_t size) {
-		return 0;
-	}
 	template<typename TKey>
 	bool comp(TKey key, uint32_t count) {
 		return _key==_key;
@@ -298,9 +308,6 @@ public:
 		}
 		*/
 	}
-	static constexpr uint32_t fixkeysize(uint32_t size) {
-		return size;
-	}
 
 	bool comp(const char* str, uint32_t count) {
 		return _key == str || (_keylen == count && strcmp(_key, str) == 0);
@@ -321,10 +328,7 @@ public:
 		_hash(hash)
 	{
 	}
-	static constexpr uint32_t fixkeysize(uint32_t size) {
-		return size;
-	}
-	
+
 	bool comp(const std::string& str, uint32_t count) {
 		return _key.length() == str.length() && _key.compare(str) == 0;
 	}
@@ -536,7 +540,7 @@ public:
 				return node;
 			}
 		}
-		uint32_t size = TNode::fixkeysize(keylen);
+		uint32_t size = Base::fixkeysize(keylen);
 		node = new(malloc(sizeof(TNode) + size)) TNode(this, key, keylen,h);
 		node->_next = _data[idx];
 		_data[idx] = node;
@@ -561,7 +565,7 @@ public:
 			}
 		}
 		if (node == nullptr) {
-			uint32_t size = TNode::fixkeysize(keylen);
+			uint32_t size = Base::fixkeysize(keylen);
 			node = new(malloc(sizeof(TNode) + size)) TNode(this,key, keylen,h, value);
 			node->_next = _data[idx];
 			_data[idx] = node;
