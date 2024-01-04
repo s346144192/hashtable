@@ -32,7 +32,7 @@ int main()
 
 	hashtable<const char*, void> ht2;
 	auto& vnode = ht2["1"];
-
+	bool condition = vnode.comp("1", 1);
     std::cout << "Hello World!\n";
 }
 

@@ -9,3 +9,4 @@
 *.ipch
 *.suo
 *.db
+.vscode/settings.json
