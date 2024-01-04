@@ -6,9 +6,87 @@
 
 
 
+
 template<typename TKey, typename TValue>
 class hashtable_base;
 
+template<typename TKey>
+class hashtable_comp_equalto_type{
+public:
+	static constexpr bool value = std::is_integral_v<TKey> || std::is_floating_point_v<TKey> || std::is_pointer_v<TKey>;
+};
+
+class hashtable_hash_base {
+public:
+	using h_int = uint32_t;
+	// hash
+	static h_int strhash(const char* k, uint32_t l, h_int seed) {
+		h_int h = seed;
+		if (!k) {
+			return h;
+		}
+		while (l > 0) {
+			h ^= (h << 5 | h >> 2) + k[--l];
+		}
+		return h;
+	}
+};
+
+template<typename TKey, bool is_class>
+class hashtable_hash_type:public hashtable_hash_base {
+public:
+	static h_int hash(TKey k, uint32_t l, h_int seed) {
+		return strhash((const char*)&k, sizeof(k), seed);
+	}
+};
+template<typename TKey>
+class hashtable_hash_type<TKey, true> :public hashtable_hash_base {
+public:
+	static h_int hash(const TKey& k, uint32_t l, h_int seed) {
+		return strhash((const char*)&k, sizeof(k), seed);
+	}
+};
+
+template<typename TKey,bool is_equalto>
+class hashtable_comp_type {
+public:
+	static bool comp(const TKey& a, const TKey& b, uint32_t count) {
+		return memcmp(&a, &b, sizeof(TKey)) == 0;
+	}
+};
+template<typename TKey>
+class hashtable_comp_type<TKey,true> {
+public:
+	static bool comp(TKey a, TKey b) {
+		return a == b;
+	}
+};
+template<typename TKey>
+class hashtable_base_type :public hashtable_hash_type<TKey,std::is_class_v<TKey>>,public hashtable_comp_type<TKey, hashtable_comp_equalto_type<TKey>::value>{
+public:
+};
+template<>
+class hashtable_base_type<const char*> :public hashtable_hash_type<const char*, std::is_class_v<const char*>>, public hashtable_comp_type<const char*, hashtable_comp_equalto_type<const char*>::value> {
+public:
+	// comp
+	static bool comp(const char* a, const char* b) {
+		return a == b || strcmp(a, b) == 0;
+	}
+	static h_int hash(const char* k, uint32_t l, h_int seed) {
+		return strhash(k, l, seed);
+	}
+};
+
+template<>
+class hashtable_base_type<std::string> :public hashtable_hash_type<std::string, std::is_class_v<std::string>>, public hashtable_comp_type<std::string, hashtable_comp_equalto_type<std::string>::value> {
+public:
+	static bool comp(const std::string& a, const std::string& b) {
+		return a.compare(b.c_str()) == 0;
+	}
+	static h_int hash(const std::string& k, uint32_t l, h_int seed) {
+		return strhash(k.c_str(), k.length(), seed);
+	}
+};
 
 class hashtable_node_value_const_char_pointer {
 public:
@@ -103,23 +181,21 @@ public:
 	using TypeValue =void;
 };
 
-template<typename TKey>
-class hashtable_node_key {
+
+template<typename TKey,bool is_equalto>
+class hashtable_node_key_type:public hashtable_hash_type<TKey, std::is_class_v<TKey>> {
 public:
-	using h_int = uint32_t;
+	using HashType = hashtable_hash_type<TKey, std::is_class_v<TKey>>;
+	using h_int = typename HashType::h_int;
 
 	const TKey _key;
 	const h_int _hash;
-	hashtable_node_key(TKey key, uint32_t l, h_int hash) :
+	hashtable_node_key_type(TKey key, uint32_t l, h_int hash) :
 		_key(key),
 		_hash(hash)
 	{}
-	static constexpr uint32_t  fixkeysize(uint32_t size) {
+	static constexpr uint32_t fixkeysize(uint32_t size) {
 		return 0;
-	}
-	template<typename TKey = std::string>
-	bool comp(const std::string& str, uint32_t count) {
-		return (_key.length() == str.length() && str.compare(_key.c_str()) == 0);
 	}
 	template<typename TKey>
 	bool comp(const TKey& key, uint32_t count) {
@@ -127,12 +203,42 @@ public:
 	}
 };
 
+template<typename TKey>
+class hashtable_node_key_type<TKey,true> :public hashtable_hash_type<TKey, std::is_class_v<TKey>> {
+public:
+	using HashType = hashtable_hash_type<TKey, std::is_class_v<TKey>>;
+	using h_int = typename HashType::h_int;
 
+	const TKey _key;
+	const h_int _hash;
+	hashtable_node_key_type(TKey key, uint32_t l, h_int hash) :
+		_key(key),
+		_hash(hash)
+	{}
+	static constexpr uint32_t fixkeysize(uint32_t size) {
+		return 0;
+	}
+	template<typename TKey>
+	bool comp(TKey key, uint32_t count) {
+		return _key==_key;
+	}
+};
+template<typename TKey>
+class hashtable_node_key:public hashtable_node_key_type<TKey, hashtable_comp_equalto_type<TKey>::value> {
+public:
+	using KeyType= hashtable_node_key_type<TKey, hashtable_comp_equalto_type<TKey>::value>;
+	using h_int = typename KeyType::h_int;
+
+	hashtable_node_key(TKey key, uint32_t l, h_int hash) :
+		KeyType(key,l,hash)
+	{}
+};
 
 template<>
-class hashtable_node_key<const char*> {
+class hashtable_node_key<const char*> :public hashtable_hash_type<const char*, std::is_class_v< const char* >> {
 public:
-	using h_int = uint32_t;
+	using HashType = hashtable_hash_type<const char*, std::is_class_v<const char*>>;
+	using h_int = typename HashType::h_int;
 
 	const char* const _key;
 	const uint32_t _keylen;
@@ -153,7 +259,7 @@ public:
 		}
 		*/
 	}
-	static constexpr uint32_t  fixkeysize(uint32_t size) {
+	static constexpr uint32_t fixkeysize(uint32_t size) {
 		return size;
 	}
 	bool comp(const char* str, uint32_t count) {
@@ -161,6 +267,27 @@ public:
 	}
 };
 
+template<>
+class hashtable_node_key<std::string> :public hashtable_hash_type<std::string, std::is_class_v<std::string>> {
+public:
+	using HashType = hashtable_hash_type<std::string, std::is_class_v<std::string>>;
+	using h_int = typename HashType::h_int;
+
+	const std::string _key;
+	const h_int _hash;
+
+	hashtable_node_key(std::string& key, uint32_t l, h_int hash) :
+		_key(key),
+		_hash(hash)
+	{
+	}
+	static constexpr uint32_t fixkeysize(uint32_t size) {
+		return size;
+	}
+	bool comp(const std::string& str, uint32_t count) {
+		return _key.length() == str.length() && _key.compare(str) == 0;
+	}
+};
 
 template<class Table, class TNode,bool>
 class hashtable_node_header  {
@@ -288,13 +415,14 @@ public:
 		return *(NodeKey*)this;
 	}
 	NodeKey& get() {
-		return (NodeKey*)this;
+		return *(NodeKey*)this;
 	}
 };
 
 template<typename TKey, typename TValue>
-class hashtable_base {
+class hashtable_base:public hashtable_base_type<TKey> {
 public:
+	using Base = hashtable_base_type<TKey>;
 	using TNode = hashtable_node<TKey, TValue>;
 	using h_int = uint32_t;
 
@@ -326,49 +454,6 @@ public:
 	template<typename TKey>
 	static uint32_t typelength(TKey k) {
 		return sizeof(TKey);
-	}
-
-	// hash
-	static h_int strhash(const char* k,uint32_t l, h_int seed) {
-		h_int h = seed;
-		if (!k) {
-			return h;
-		}
-		while (l>0) {
-			h ^= (h << 5 | h >> 2) + k[--l];
-		}
-		return h;
-	}
-
-	template<typename TKey = const char*>
-	static h_int hash(const char* k, uint32_t l, h_int seed) {
-		return strhash(k,l,seed);
-	}
-	template<typename TKey = std::string>
-	static h_int hash(const std::string& k, uint32_t l, h_int seed) {
-		return strhash(k.c_str(), k.length(), seed);
-	}
-	template<bool is_class = std::is_class<TKey>>
-	static h_int hash(const TKey& k, uint32_t l, h_int seed) {
-		return strhash((const char*)&k, sizeof(k), seed);
-	}
-	template<typename TKey>
-	static h_int hash(TKey k, uint32_t l, h_int seed) {
-		return strhash((const char*)&k,sizeof(k), seed);
-	}
-
-	// comp
-	template<typename TKey = const char*>
-	static bool comp(const char* a, const char* b) {
-		return a==b || strcmp(a,b)==0;
-	}
-	template<typename TKey = std::string>
-	static bool comp(const std::string& a, const std::string& b) {
-		return a.compare(b.c_str()) == 0;
-	}
-	template<typename TKey>
-	static bool comp(const TKey& a,const TKey& b, uint32_t count) {
-		return memcmp(&a,&b,sizeof(TKey))==0;
 	}
 
 	// get
@@ -424,7 +509,7 @@ public:
 			resize(_size << 1);
 		}
 		uint32_t keylen = typelength(key);
-		h_int h = hash(key, keylen, 0);
+		h_int h = Base::hash(key, keylen, 0);
 		uint32_t idx = h & _mask;
 		TNode* node = _data[idx];
 		for (; node != nullptr; node = node->_next) {
@@ -448,7 +533,7 @@ public:
 			resize(_size * 2);
 		}
 		uint32_t keylen = typelength(key);
-		h_int h = hash(key, keylen, 0);
+		h_int h = Base::hash(key, keylen, 0);
 		uint32_t idx = h & _mask;
 		TNode* node = _data[idx];
 		for (; node != nullptr;node=node->_next) {
