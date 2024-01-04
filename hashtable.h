@@ -484,7 +484,6 @@ public:
 	{
 		resize(8);
 	}
-
 	// get
 	TNode* gethashnode(h_int h) {
 		uint32_t idx = h & _mask;
