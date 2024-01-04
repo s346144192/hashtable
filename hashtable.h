@@ -96,7 +96,36 @@ public:
 };
 
 template<typename TKey>
-class hashtable_base_type :public hashtable_hash_type<TKey>,public hashtable_comp_type<TKey>{};
+class hashtable_typelength {
+public:
+	static uint32_t typelength(TKey k) {
+		return sizeof(TKey);
+	}
+};
+template<>
+class hashtable_typelength<const char*> {
+public:
+	static uint32_t typelength(const char* s) {
+		if (!s)
+			return 0;
+		return strlen(s);
+	}
+};
+template<>
+class hashtable_typelength<std::string> {
+public:
+	static uint32_t typelength(std::string& s) {
+		return s.length();
+	}
+};
+
+template<typename TKey>
+class hashtable_base_type :
+	public hashtable_hash_type<TKey>,
+	public hashtable_comp_type<TKey>,
+	public hashtable_typelength<TKey>
+{
+};
 
 class hashtable_node_value_const_char_pointer {
 public:
@@ -272,6 +301,7 @@ public:
 	static constexpr uint32_t fixkeysize(uint32_t size) {
 		return size;
 	}
+
 	bool comp(const char* str, uint32_t count) {
 		return _key == str || (_keylen == count && strcmp(_key, str) == 0);
 	}
@@ -294,6 +324,7 @@ public:
 	static constexpr uint32_t fixkeysize(uint32_t size) {
 		return size;
 	}
+	
 	bool comp(const std::string& str, uint32_t count) {
 		return _key.length() == str.length() && _key.compare(str) == 0;
 	}
@@ -356,7 +387,7 @@ public:
 	using NodeBase = hashtable_node_base<hashtable_base<TKey, TValue>, hashtable_node<TKey, TValue>, false,
 		hashtable_node_allocate<TKey, TValue>::enable>;
 	using TypeValue = typename NodeValue::TypeValue;
-	using h_int = uint32_t;
+	using h_int = typename NodeKey::h_int;
 
 	template<class TKey>
 	hashtable_node(Table* parent, TKey key, uint32_t l, h_int hash) :
@@ -406,7 +437,7 @@ public:
 	using NodeBase = hashtable_node_base<hashtable_base<TKey, void>, hashtable_node<TKey, void>, false,
 		hashtable_node_allocate<TKey, void>::enable>;
 	using TypeValue = NodeKey;
-	using h_int = uint32_t;
+	using h_int = typename NodeKey::h_int;
 
 	template<class TKey>
 	hashtable_node(Table* parent, TKey key, uint32_t l, h_int hash) :
@@ -434,7 +465,7 @@ class hashtable_base:public hashtable_base_type<TKey> {
 public:
 	using Base = hashtable_base_type<TKey>;
 	using TNode = hashtable_node<TKey, TValue>;
-	using h_int = uint32_t;
+	using h_int = typename TNode::h_int;
 
 	TNode** _data;
 	uint32_t _count;
@@ -450,24 +481,8 @@ public:
 		resize(8);
 	}
 
-	// typelength
-	template<typename TKey = const char*>
-	static uint32_t typelength(const char* s) {
-		if (!s)
-			return 0;
-		return strlen(s);
-	}
-	template<typename TKey = std::string>
-	static uint32_t typelength(std::string& s) {
-		return s.length();
-	}
-	template<typename TKey>
-	static uint32_t typelength(TKey k) {
-		return sizeof(TKey);
-	}
-
 	// get
-	TNode* gethnode(h_int h) {
+	TNode* gethashnode(h_int h) {
 		uint32_t idx = h & _mask;
 		TNode* node = _data[idx];
 		for (; node != nullptr; node = node->_next) {
@@ -478,8 +493,8 @@ public:
 		return nullptr;
 	}
 	TNode* getnode(TKey key) {
-		uint32_t l = typelength(key);
-		h_int h = hash(key,l,0);
+		uint32_t l = Base::typelength(key);
+		h_int h = Base::hash(key,l,0);
 		uint32_t idx = h & _mask;
 		TNode* node = _data[idx];
 		for (; node != nullptr; node = node->_next) {
@@ -492,19 +507,13 @@ public:
 	bool empty(TKey key) {
 		return getnode(key)==nullptr;
 	}
-	template<bool is_class = std::is_class_v<TKey>>
-	TNode* get(TKey key) {
-		TNode* node = getnode(key);
-		return node;
-	}
-	template<typename TKey>
 	TNode* get(TKey key) {
 		TNode* node = getnode(key);
 		return node;
 	}
 	// find
 	TNode* findfromnode(TNode* node, TKey key) {
-		uint32_t l = typelength(key);
+		uint32_t l = Base::typelength(key);
 		for (; node != nullptr; node = node->_next) {
 			if (node->comp(key, l)) {
 				return node;
@@ -518,7 +527,7 @@ public:
 		if (_count >> 3 >= _size) {
 			resize(_size << 1);
 		}
-		uint32_t keylen = typelength(key);
+		uint32_t keylen = Base::typelength(key);
 		h_int h = Base::hash(key, keylen, 0);
 		uint32_t idx = h & _mask;
 		TNode* node = _data[idx];
@@ -542,7 +551,7 @@ public:
 		if (_count >> 3 >= _size) {
 			resize(_size * 2);
 		}
-		uint32_t keylen = typelength(key);
+		uint32_t keylen = Base::typelength(key);
 		h_int h = Base::hash(key, keylen, 0);
 		uint32_t idx = h & _mask;
 		TNode* node = _data[idx];
@@ -571,8 +580,8 @@ public:
 
 	// remove
 	bool remove(TKey key) {
-		uint32_t keylen = typelength(key);
-		h_int h = hash(key, keylen, 0);
+		uint32_t keylen = Base::typelength(key);
+		h_int h = Base::hash(key, keylen, 0);
 		uint32_t idx = h & _mask;
 		TNode* lnode = nullptr;
 		TNode* node = _data[idx];
